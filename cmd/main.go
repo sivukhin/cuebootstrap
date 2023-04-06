@@ -1,14 +1,16 @@
 package main
 
 import (
-	"cue-bootstrap/pkg"
-	"cuelang.org/go/cue/format"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
 	"os"
 	"path/filepath"
+
+	"github.com/sivukhin/cuebootstrap/pkg"
+
+	"cuelang.org/go/cue/format"
 )
 
 func main() {
