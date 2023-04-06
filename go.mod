@@ -1,4 +1,4 @@
-module cuebootstrap
+module github.com/sivukhin/cuebootstrap
 
 go 1.20
 
