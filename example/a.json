@@ -1,0 +1,13 @@
+{
+  "Zero": 0,
+  "NumberString": 42,
+  "List": [
+    1,
+    2,
+    3
+  ],
+  "Object": {
+    "Key": "cue",
+    "Value": "awesome"
+  }
+}

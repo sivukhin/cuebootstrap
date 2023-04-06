@@ -1,0 +1,10 @@
+{
+  "Zero": 0,
+  "NumberString": "string",
+  "List": [
+    42
+  ],
+  "Object": {
+    "Key": "json"
+  }
+}
