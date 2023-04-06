@@ -2,6 +2,8 @@
 
 Simple CLI tool which allows you transform set of JSON objects into the [CUE](https://github.com/cue-lang/cue) definition
 
+Install it locally with command `go install github.com/sivukhin/cuebootstrap/cmd/cuebootstrap@latest`
+
 ### Example
 
 If you have two json files:
