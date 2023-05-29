@@ -35,9 +35,10 @@ func main() {
 			panic(err)
 		}
 		var data any
-		if strings.HasSuffix(".json", file) {
+		fmt.Printf("file: %v\n", file)
+		if strings.HasSuffix(file, ".json") {
 			err = json.Unmarshal(bytes, &data)
-		} else if strings.HasSuffix(".yaml", file) || strings.HasSuffix(".yml", file) {
+		} else if strings.HasSuffix(file, ".yaml") || strings.HasSuffix(file, ".yml") {
 			err = yaml.Unmarshal(bytes, &data)
 		} else {
 			err = fmt.Errorf("unexpected extension of file %v", file)

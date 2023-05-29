@@ -26,8 +26,12 @@ func mapKeys(maps ...any) []string {
 		value := reflect.ValueOf(m)
 		if value.Type().Kind() == reflect.Map {
 			for _, key := range value.MapKeys() {
-				if key.Kind() == reflect.String {
-					keys[key.String()] = struct{}{}
+				specificKey := key
+				if specificKey.Kind() == reflect.Interface {
+					specificKey = specificKey.Elem()
+				}
+				if specificKey.Kind() == reflect.String {
+					keys[specificKey.String()] = struct{}{}
 				}
 			}
 		}
@@ -56,13 +60,15 @@ func LoadInto(node *Node, aValue any) error {
 	switch theValue := aValue.(type) {
 	case float64:
 		node.Numbers = append(node.Numbers, theValue)
+	case int:
+		node.Numbers = append(node.Numbers, float64(theValue))
 	case string:
 		node.Strings = append(node.Strings, theValue)
 	case bool:
 		node.Bools = append(node.Bools, theValue)
-	case map[string]any:
+	case map[any]any, map[string]any:
 		node.CanBeObject = true
-		if len(theValue) == 0 {
+		if reflect.ValueOf(theValue).Len() == 0 {
 			break
 		}
 		fresh := false
@@ -78,7 +84,15 @@ func LoadInto(node *Node, aValue any) error {
 					field.CanBeUndefined = true
 				}
 			}
-			value, valueOk := theValue[key]
+			var value any
+			var valueOk bool
+			if mStr, ok := theValue.(map[string]any); ok {
+				value, valueOk = mStr[key]
+			} else if mAny, ok := theValue.(map[any]any); ok {
+				value, valueOk = mAny[key]
+			} else {
+				return fmt.Errorf("unexpected map type: %T", theValue)
+			}
 			if valueOk {
 				if err := LoadInto(field, value); err != nil {
 					return err
@@ -102,7 +116,7 @@ func LoadInto(node *Node, aValue any) error {
 			}
 		}
 	default:
-		return fmt.Errorf("unexpected value type: %v", aValue)
+		return fmt.Errorf("unexpected value type: %T", aValue)
 	}
 	return nil
 }
