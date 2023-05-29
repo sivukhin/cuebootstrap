@@ -2,7 +2,10 @@ module github.com/sivukhin/cuebootstrap
 
 go 1.20
 
-require cuelang.org/go v0.4.3
+require (
+	cuelang.org/go v0.4.3
+	gopkg.in/yaml.v2 v2.4.0
+)
 
 require (
 	github.com/cockroachdb/apd/v2 v2.0.1 // indirect

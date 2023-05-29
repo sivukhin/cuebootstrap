@@ -1,12 +1,15 @@
 package main
 
 import (
-	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
+
+	"encoding/json"
+	"gopkg.in/yaml.v2"
 
 	"github.com/sivukhin/cuebootstrap/pkg"
 
@@ -32,7 +35,13 @@ func main() {
 			panic(err)
 		}
 		var data any
-		err = json.Unmarshal(bytes, &data)
+		if strings.HasSuffix(".json", file) {
+			err = json.Unmarshal(bytes, &data)
+		} else if strings.HasSuffix(".yaml", file) || strings.HasSuffix(".yml", file) {
+			err = yaml.Unmarshal(bytes, &data)
+		} else {
+			err = fmt.Errorf("unexpected extension of file %v", file)
+		}
 		if err != nil {
 			panic(err)
 		}
