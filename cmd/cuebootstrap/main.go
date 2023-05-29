@@ -35,7 +35,7 @@ func main() {
 			panic(err)
 		}
 		var data any
-		fmt.Printf("file: %v\n", file)
+		log.Printf("processing file %v", file)
 		if strings.HasSuffix(file, ".json") {
 			err = json.Unmarshal(bytes, &data)
 		} else if strings.HasSuffix(file, ".yaml") || strings.HasSuffix(file, ".yml") {
