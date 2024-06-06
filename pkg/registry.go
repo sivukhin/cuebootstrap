@@ -49,66 +49,75 @@ func (registry *Registry) AddSchema(name string, node *Node) {
 	registry.SchemasOrder = append(registry.SchemasOrder, name)
 }
 
-func (registry *Registry) createNode(root ast.Decl) (*Node, error) {
+func (registry *Registry) fillNode(root ast.Decl, node **Node) error {
 	switch lit := root.(type) {
 	case *ast.Ident:
 		if lit.Name == "_" {
-			return &Node{}, nil
+			return nil
 		}
 		if strings.HasPrefix(lit.Name, "#") {
 			schema, ok := registry.SchemaNode[lit.Name]
 			if !ok {
-				return nil, fmt.Errorf("unknown schema referenced: '%v'", lit.Name)
+				return fmt.Errorf("unknown schema referenced: '%v'", lit.Name)
 			}
-			return schema, nil
+			*node = schema
+			return nil
 		}
 		if lit.Name == "string" {
-			return &Node{CanBeString: true}, nil
+			**node = Node{CanBeString: true}
+			return nil
 		}
 		if lit.Name == "number" {
-			return &Node{CanBeNumber: true}, nil
+			**node = Node{CanBeNumber: true}
+			return nil
 		}
 	case *ast.StructLit:
-		node := &Node{CanBeObject: true, ObjectFields: make(map[string]*Node)}
+		**node = Node{CanBeObject: true, ObjectFields: make(map[string]*Node)}
 
 		for _, element := range lit.Elts {
 			if field, ok := element.(*ast.Field); ok {
 				fieldName, ok := extractName(field.Label)
 				if !ok {
-					return nil, fmt.Errorf("failed to get field label: %v", field.Label)
+					return fmt.Errorf("failed to get field label: %v", field.Label)
 				}
 				if strings.HasPrefix(fieldName, "#") {
-					schemaNode, err := registry.createNode(field.Value)
-					if err != nil {
-						return nil, fmt.Errorf("failed to fill schema %v: %w", fieldName, err)
+					if ident, ok := field.Value.(*ast.Ident); ok && strings.HasPrefix(ident.Name, "#") {
+						return fmt.Errorf("direct references between schemas are forbidden (e.g. #a: #b)")
 					}
+					schemaNode := &Node{}
 					registry.AddSchema(fieldName, schemaNode)
-				} else {
-					fieldNode, err := registry.createNode(field.Value)
+					err := registry.fillNode(field.Value, &schemaNode)
 					if err != nil {
-						return nil, fmt.Errorf("failed to fill field %v: %w", fieldName, err)
+						return fmt.Errorf("failed to fill schema %v: %w", fieldName, err)
 					}
-					node.ObjectFields[fieldName] = fieldNode
+				} else {
+					fieldNode := &Node{}
+					err := registry.fillNode(field.Value, &fieldNode)
+					if err != nil {
+						return fmt.Errorf("failed to fill field %v: %w", fieldName, err)
+					}
+					(**node).ObjectFields[fieldName] = fieldNode
 				}
 			}
 		}
-		return node, nil
+		return nil
 	case *ast.ListLit:
 		if len(lit.Elts) != 1 {
-			return nil, fmt.Errorf("only arrays with single ellipsis are supported (e.g. [...type])")
+			return fmt.Errorf("only arrays with single ellipsis are supported (e.g. [...type])")
 		}
 		ellipsis, ok := lit.Elts[0].(*ast.Ellipsis)
 		if !ok {
-			return nil, fmt.Errorf("only arrays with single ellipsis are supported (e.g. [...type])")
+			return fmt.Errorf("only arrays with single ellipsis are supported (e.g. [...type])")
 		}
-		arrayElement, err := registry.createNode(ellipsis.Type)
+		arrayElement := &Node{}
+		err := registry.fillNode(ellipsis.Type, &arrayElement)
 		if err != nil {
-			return nil, fmt.Errorf("failed to create array element: %w", err)
+			return fmt.Errorf("failed to create array element: %w", err)
 		}
-		node := &Node{CanBeArray: true, ArrayElement: arrayElement}
-		return node, nil
+		**node = Node{CanBeArray: true, ArrayElement: arrayElement}
+		return nil
 	}
-	return nil, nil
+	return nil
 }
 
 func LoadRegistryFromFile(path string) (*Registry, error) {
@@ -139,10 +148,11 @@ func LoadRegistry(decl ast.Decl) (*Registry, error) {
 	registry := NewRegistry()
 	registry.Root = schemaName
 
-	rootNode, err := registry.createNode(field.Value)
+	rootNode := &Node{}
+	registry.AddSchema(schemaName, rootNode)
+	err := registry.fillNode(field.Value, &rootNode)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create schema: %w", err)
 	}
-	registry.AddSchema(schemaName, rootNode)
 	return registry, nil
 }

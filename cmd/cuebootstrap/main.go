@@ -21,6 +21,7 @@ import (
 func main() {
 	input := flag.String("inputs", "", "glob pattern of input json files")
 	skeleton := flag.String("skeleton", "", "path to skeleton file")
+	noDefaults := flag.Bool("no-defaults", false, "disable default values")
 	flag.Parse()
 
 	files, err := filepath.Glob(*input)
@@ -40,7 +41,7 @@ func main() {
 	} else {
 		registry = pkg.NewRegistry()
 		registry.Root = "#root"
-		
+
 		registry.AddSchema("#root", &pkg.Node{})
 	}
 
@@ -70,7 +71,7 @@ func main() {
 	declarations := make([]ast.Node, 0)
 	for _, schemaName := range registry.SchemasOrder {
 		schemaNode := registry.SchemaNode[schemaName]
-		declaration, err := pkg.Format(registry, schemaNode, pkg.TreeComplexity(schemaNode))
+		declaration, err := pkg.Format(registry, schemaNode, pkg.TreeComplexity(schemaNode), *noDefaults)
 		if err != nil {
 			log.Fatalf("unable to format schema: %v", err)
 		}

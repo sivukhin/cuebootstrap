@@ -142,30 +142,42 @@ func equals[T comparable](s []T) bool {
 	return true
 }
 
+const (
+	nullComplexity = 1 << iota
+	stringComplexity
+	numberComplexity
+	boolComplexity
+	arrayComplexity
+	objectComplexity
+)
+
 func nodeComplexity(node *Node, c map[*Node]int) int {
+	if _, ok := c[node]; ok {
+		return 0
+	}
 	if node.CanBeNull {
-		c[node]++
+		c[node] += nullComplexity
 	}
 	if node.CanBeArray {
-		c[node]++
+		c[node] += arrayComplexity
 		if node.ArrayElement != nil {
 			c[node] += nodeComplexity(node.ArrayElement, c)
 		}
 	}
 	if node.CanBeObject {
-		c[node]++
+		c[node] += objectComplexity
 		for _, value := range node.ObjectFields {
 			c[node] += nodeComplexity(value, c)
 		}
 	}
 	if node.CanBeNumber {
-		c[node]++
+		c[node] += numberComplexity
 	}
 	if node.CanBeString {
-		c[node]++
+		c[node] += stringComplexity
 	}
 	if node.CanBeBool {
-		c[node]++
+		c[node] += boolComplexity
 	}
 	return c[node]
 }
@@ -176,18 +188,24 @@ func TreeComplexity(node *Node) map[*Node]int {
 	return c
 }
 
-func Format(registry *Registry, node *Node, complexity map[*Node]int) (ast.Expr, error) {
-	return format(registry, node, complexity, true)
+func Format(registry *Registry, node *Node, complexity map[*Node]int, noDefaults bool) (ast.Expr, error) {
+	return format(registry, node, complexity, noDefaults, true)
 }
 
-func format(registry *Registry, node *Node, complexity map[*Node]int, isRoot bool) (ast.Expr, error) {
+func format(
+	registry *Registry,
+	node *Node,
+	complexity map[*Node]int,
+	noDefaults bool,
+	isRoot bool,
+) (ast.Expr, error) {
 	if name, ok := registry.SchemaName[node]; !isRoot && ok {
 		return ast.NewIdent(name), nil
 	}
 	expressions := make([]ast.Expr, 0)
 	if node.CanBeArray {
 		if node.ArrayElement != nil {
-			format, err := format(registry, node.ArrayElement, complexity, false)
+			format, err := format(registry, node.ArrayElement, complexity, noDefaults, false)
 			if err != nil {
 				return nil, fmt.Errorf("unable to format array element: %w", err)
 			}
@@ -213,7 +231,7 @@ func format(registry *Registry, node *Node, complexity map[*Node]int, isRoot boo
 				if value.CanBeUndefined {
 					fields = append(fields, token.OPTION)
 				}
-				format, err := format(registry, value, complexity, false)
+				format, err := format(registry, value, complexity, noDefaults, false)
 				if err != nil {
 					return nil, fmt.Errorf("unable to format field %v: %w", key, err)
 				}
@@ -227,7 +245,7 @@ func format(registry *Registry, node *Node, complexity map[*Node]int, isRoot boo
 	if node.CanBeNumber {
 		numbers := make([]ast.Expr, 0)
 		numbers = append(numbers, ast.NewIdent("number"))
-		if complexity[node] == 1 && equals(node.Numbers) {
+		if complexity[node] == 1 && equals(node.Numbers) && !noDefaults {
 			numbers = append(numbers, &ast.UnaryExpr{Op: token.MUL, X: ast.NewLit(token.INT, fmt.Sprintf("%v", node.Numbers[0]))})
 		}
 		options, err := astOptions(numbers)
@@ -239,7 +257,7 @@ func format(registry *Registry, node *Node, complexity map[*Node]int, isRoot boo
 	if node.CanBeString {
 		strings := make([]ast.Expr, 0)
 		strings = append(strings, ast.NewIdent("string"))
-		if complexity[node] == 1 && equals(node.Strings) {
+		if complexity[node] == 1 && equals(node.Strings) && !noDefaults {
 			strings = append(strings, &ast.UnaryExpr{Op: token.MUL, X: ast.NewString(node.Strings[0])})
 		}
 		options, err := astOptions(strings)
@@ -251,7 +269,7 @@ func format(registry *Registry, node *Node, complexity map[*Node]int, isRoot boo
 	if node.CanBeBool {
 		bools := make([]ast.Expr, 0)
 		bools = append(bools, ast.NewIdent("bool"))
-		if complexity[node] == 1 && equals(node.Bools) {
+		if complexity[node] == 1 && equals(node.Bools) && !noDefaults {
 			tokenType, tokenValue := token.TRUE, "true"
 			if !node.Bools[0] {
 				tokenType, tokenValue = token.FALSE, "false"
@@ -268,8 +286,7 @@ func format(registry *Registry, node *Node, complexity map[*Node]int, isRoot boo
 		expressions = append(expressions, ast.NewNull())
 	}
 	if len(expressions) == 0 {
-		return ast.NewIdent("_"), nil
-		//return nil, fmt.Errorf("unexpected nodes structure: found empty node %v", node)
+		return nil, fmt.Errorf("unexpected nodes structure: found empty node %v", node)
 	}
 	return astOptions(expressions)
 }
