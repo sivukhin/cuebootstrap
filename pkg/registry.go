@@ -49,6 +49,16 @@ func (registry *Registry) AddSchema(name string, node *Node) {
 	registry.SchemasOrder = append(registry.SchemasOrder, name)
 }
 
+func isDiscriminativeField(field *ast.Field) bool {
+	for _, attr := range field.Attrs {
+		key, _ := attr.Split()
+		if key == "discriminative" {
+			return true
+		}
+	}
+	return false
+}
+
 func (registry *Registry) fillNode(root ast.Decl, node **Node) error {
 	switch lit := root.(type) {
 	case *ast.Ident:
@@ -64,15 +74,16 @@ func (registry *Registry) fillNode(root ast.Decl, node **Node) error {
 			return nil
 		}
 		if lit.Name == "string" {
-			**node = Node{CanBeString: true}
+			(**node).CanBeString = true
 			return nil
 		}
 		if lit.Name == "number" {
-			**node = Node{CanBeNumber: true}
+			(**node).CanBeNumber = true
 			return nil
 		}
 	case *ast.StructLit:
-		**node = Node{CanBeObject: true, ObjectFields: make(map[string]*Node)}
+		(**node).CanBeObject = true
+		(**node).ObjectFields = make(map[string]*Node)
 
 		for _, element := range lit.Elts {
 			if field, ok := element.(*ast.Field); ok {
@@ -92,6 +103,10 @@ func (registry *Registry) fillNode(root ast.Decl, node **Node) error {
 					}
 				} else {
 					fieldNode := &Node{}
+					if isDiscriminativeField(field) {
+						(**node).DiscriminationField = fieldName
+						(**node).DiscriminationValues = make(map[string]*Node)
+					}
 					err := registry.fillNode(field.Value, &fieldNode)
 					if err != nil {
 						return fmt.Errorf("failed to fill field %v: %w", fieldName, err)
@@ -114,7 +129,8 @@ func (registry *Registry) fillNode(root ast.Decl, node **Node) error {
 		if err != nil {
 			return fmt.Errorf("failed to create array element: %w", err)
 		}
-		**node = Node{CanBeArray: true, ArrayElement: arrayElement}
+		(**node).CanBeArray = true
+		(**node).ArrayElement = arrayElement
 		return nil
 	}
 	return nil

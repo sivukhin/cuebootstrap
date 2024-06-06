@@ -9,7 +9,7 @@ import (
 	"cuelang.org/go/cue/token"
 )
 
-type Node struct {
+type NodeProps struct {
 	CanBeNull      bool
 	CanBeUndefined bool
 	CanBeObject    bool
@@ -22,6 +22,12 @@ type Node struct {
 	Numbers        []float64
 	Strings        []string
 	Bools          []bool
+}
+
+type Node struct {
+	NodeProps
+	DiscriminationField  string
+	DiscriminationValues map[string]*Node
 }
 
 func mapKeys(maps ...any) []string {
