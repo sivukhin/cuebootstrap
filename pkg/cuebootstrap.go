@@ -1,11 +1,12 @@
 package pkg
 
 import (
-	"cuelang.org/go/cue/ast"
-	"cuelang.org/go/cue/token"
 	"fmt"
 	"reflect"
 	"sort"
+
+	"cuelang.org/go/cue/ast"
+	"cuelang.org/go/cue/token"
 )
 
 type Node struct {
@@ -13,6 +14,9 @@ type Node struct {
 	CanBeUndefined bool
 	CanBeObject    bool
 	CanBeArray     bool
+	CanBeString    bool
+	CanBeNumber    bool
+	CanBeBool      bool
 	ObjectFields   map[string]*Node
 	ArrayElement   *Node
 	Numbers        []float64
@@ -43,15 +47,6 @@ func mapKeys(maps ...any) []string {
 	return result
 }
 
-func Load(aValue any) (*Node, error) {
-	var node Node
-	err := LoadInto(&node, aValue)
-	if err != nil {
-		return nil, err
-	}
-	return &node, nil
-}
-
 func LoadInto(node *Node, aValue any) error {
 	if aValue == nil {
 		node.CanBeNull = true
@@ -60,12 +55,16 @@ func LoadInto(node *Node, aValue any) error {
 	switch theValue := aValue.(type) {
 	case float64:
 		node.Numbers = append(node.Numbers, theValue)
+		node.CanBeNumber = true
 	case int:
 		node.Numbers = append(node.Numbers, float64(theValue))
+		node.CanBeNumber = true
 	case string:
 		node.Strings = append(node.Strings, theValue)
+		node.CanBeString = true
 	case bool:
 		node.Bools = append(node.Bools, theValue)
+		node.CanBeBool = true
 	case map[any]any, map[string]any:
 		node.CanBeObject = true
 		if reflect.ValueOf(theValue).Len() == 0 {
@@ -159,13 +158,13 @@ func nodeComplexity(node *Node, c map[*Node]int) int {
 			c[node] += nodeComplexity(value, c)
 		}
 	}
-	if len(node.Numbers) > 0 {
+	if node.CanBeNumber {
 		c[node]++
 	}
-	if len(node.Strings) > 0 {
+	if node.CanBeString {
 		c[node]++
 	}
-	if len(node.Bools) > 0 {
+	if node.CanBeBool {
 		c[node]++
 	}
 	return c[node]
@@ -177,11 +176,18 @@ func TreeComplexity(node *Node) map[*Node]int {
 	return c
 }
 
-func Format(node *Node, complexity map[*Node]int) (ast.Expr, error) {
+func Format(registry *Registry, node *Node, complexity map[*Node]int) (ast.Expr, error) {
+	return format(registry, node, complexity, true)
+}
+
+func format(registry *Registry, node *Node, complexity map[*Node]int, isRoot bool) (ast.Expr, error) {
+	if name, ok := registry.SchemaName[node]; !isRoot && ok {
+		return ast.NewIdent(name), nil
+	}
 	expressions := make([]ast.Expr, 0)
 	if node.CanBeArray {
 		if node.ArrayElement != nil {
-			format, err := Format(node.ArrayElement, complexity)
+			format, err := format(registry, node.ArrayElement, complexity, false)
 			if err != nil {
 				return nil, fmt.Errorf("unable to format array element: %w", err)
 			}
@@ -207,7 +213,7 @@ func Format(node *Node, complexity map[*Node]int) (ast.Expr, error) {
 				if value.CanBeUndefined {
 					fields = append(fields, token.OPTION)
 				}
-				format, err := Format(value, complexity)
+				format, err := format(registry, value, complexity, false)
 				if err != nil {
 					return nil, fmt.Errorf("unable to format field %v: %w", key, err)
 				}
@@ -218,7 +224,7 @@ func Format(node *Node, complexity map[*Node]int) (ast.Expr, error) {
 			expressions = append(expressions, ast.NewStruct())
 		}
 	}
-	if len(node.Numbers) > 0 {
+	if node.CanBeNumber {
 		numbers := make([]ast.Expr, 0)
 		numbers = append(numbers, ast.NewIdent("number"))
 		if complexity[node] == 1 && equals(node.Numbers) {
@@ -230,7 +236,7 @@ func Format(node *Node, complexity map[*Node]int) (ast.Expr, error) {
 		}
 		expressions = append(expressions, options)
 	}
-	if len(node.Strings) > 0 {
+	if node.CanBeString {
 		strings := make([]ast.Expr, 0)
 		strings = append(strings, ast.NewIdent("string"))
 		if complexity[node] == 1 && equals(node.Strings) {
@@ -242,7 +248,7 @@ func Format(node *Node, complexity map[*Node]int) (ast.Expr, error) {
 		}
 		expressions = append(expressions, options)
 	}
-	if len(node.Bools) > 0 {
+	if node.CanBeBool {
 		bools := make([]ast.Expr, 0)
 		bools = append(bools, ast.NewIdent("bool"))
 		if complexity[node] == 1 && equals(node.Bools) {
@@ -262,7 +268,8 @@ func Format(node *Node, complexity map[*Node]int) (ast.Expr, error) {
 		expressions = append(expressions, ast.NewNull())
 	}
 	if len(expressions) == 0 {
-		return nil, fmt.Errorf("unexpected nodes structure: found empty node %v", node)
+		return ast.NewIdent("_"), nil
+		//return nil, fmt.Errorf("unexpected nodes structure: found empty node %v", node)
 	}
 	return astOptions(expressions)
 }
