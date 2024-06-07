@@ -285,20 +285,27 @@ func format(
 	}
 	if node.CanBeObject {
 		fields := make([]ast.Decl, 0)
+		var keys []string
 		if node.DiscriminationField != "" {
-			for discriminationKey, discriminationValue := range node.DiscriminationValues {
-				format, err := format(registry, discriminationValue, complexity, noDefaults, false)
+			keys = make([]string, 0, len(node.DiscriminationValues))
+			for key := range node.DiscriminationValues {
+				keys = append(keys, key)
+			}
+			sort.Slice(keys, func(i, j int) bool { return keys[i] < keys[j] })
+
+			for _, key := range keys {
+				value := node.DiscriminationValues[key]
+				format, err := format(registry, value, complexity, noDefaults, false)
 				if err != nil {
-					return nil, fmt.Errorf("unable to format discrimination value %v: %w", discriminationKey, err)
+					return nil, fmt.Errorf("unable to format discrimination value %v: %w", key, err)
 				}
-				field := &ast.Field{Label: ast.NewIdent(fmt.Sprintf("#%v", discriminationKey)), Value: format}
+				field := &ast.Field{Label: ast.NewIdent(fmt.Sprintf("#%v", key)), Value: format}
 				fields = append(fields, field)
 			}
-		}
-		if node.DiscriminationField != "" {
+
 			options := make([]ast.Expr, 0)
-			for value := range node.DiscriminationValues {
-				options = append(options, ast.NewString(value))
+			for _, key := range keys {
+				options = append(options, ast.NewString(key))
 			}
 			optionsExp, err := astOptions(options)
 			if err != nil {
@@ -335,18 +342,18 @@ func format(
 			}
 		}
 		if len(node.DiscriminationValues) > 0 {
-			for discriminationKey, _ := range node.DiscriminationValues {
+			for _, key := range keys {
 				fields = append(fields, &ast.Comprehension{
 					Clauses: []ast.Clause{
 						&ast.IfClause{
 							Condition: ast.NewBinExpr(
 								token.EQL,
 								ast.NewIdent(node.DiscriminationField),
-								ast.NewString(discriminationKey),
+								ast.NewString(key),
 							),
 						},
 					},
-					Value: ast.NewStruct(ast.Embed(ast.NewIdent(fmt.Sprintf("#%v", discriminationKey)))),
+					Value: ast.NewStruct(ast.Embed(ast.NewIdent(fmt.Sprintf("#%v", key)))),
 				})
 			}
 		}
