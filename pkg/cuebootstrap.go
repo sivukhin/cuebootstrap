@@ -140,12 +140,6 @@ func (registry *Registry) LoadInto(node *Node, aValue any) error {
 		}
 
 		node.CanBeObject = true
-		if reflect.ValueOf(theValue).Len() == 0 {
-			break
-		}
-		if node.ObjectFields == nil {
-			node.ObjectFields = make(map[string]*Node, 0)
-		}
 		for _, key := range mapKeys(theValue, node.ObjectFields) {
 			field, _ := node.ObjectFields[key]
 			if field == nil {
@@ -164,7 +158,10 @@ func (registry *Registry) LoadInto(node *Node, aValue any) error {
 			} else {
 				field.CanBeUndefined = true
 			}
-			if key != discriminationField {
+			if discriminationField == "" || key != discriminationField {
+				if node.ObjectFields == nil {
+					node.ObjectFields = make(map[string]*Node, 0)
+				}
 				node.ObjectFields[key] = field
 			}
 		}
