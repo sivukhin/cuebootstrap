@@ -55,6 +55,23 @@ func mapKeys(maps ...any) []string {
 	return result
 }
 
+func isSimpleNode(node *Node) bool {
+	if node.CanBeObject || node.CanBeArray || node.CanBeNull {
+		return false
+	}
+	representations := 0
+	if node.CanBeNumber {
+		representations += 1
+	}
+	if node.CanBeString {
+		representations += 1
+	}
+	if node.CanBeBool {
+		representations += 1
+	}
+	return representations == 1
+}
+
 func getValueFromMap(m any, key any) (any, bool, error) {
 	if mString, ok := m.(map[string]any); ok {
 		value, ok := mString[key.(string)]
@@ -347,7 +364,7 @@ func format(
 	if node.CanBeNumber {
 		numbers := make([]ast.Expr, 0)
 		numbers = append(numbers, ast.NewIdent("number"))
-		if complexity[node] == 1 && equals(node.Numbers) && !noDefaults {
+		if isSimpleNode(node) && equals(node.Numbers) && !noDefaults {
 			numbers = append(numbers, &ast.UnaryExpr{Op: token.MUL, X: ast.NewLit(token.INT, fmt.Sprintf("%v", node.Numbers[0]))})
 		}
 		options, err := astOptions(numbers)
@@ -359,7 +376,7 @@ func format(
 	if node.CanBeString {
 		strings := make([]ast.Expr, 0)
 		strings = append(strings, ast.NewIdent("string"))
-		if complexity[node] == 1 && equals(node.Strings) && !noDefaults {
+		if isSimpleNode(node) && equals(node.Strings) && !noDefaults {
 			strings = append(strings, &ast.UnaryExpr{Op: token.MUL, X: ast.NewString(node.Strings[0])})
 		}
 		options, err := astOptions(strings)
@@ -371,7 +388,7 @@ func format(
 	if node.CanBeBool {
 		bools := make([]ast.Expr, 0)
 		bools = append(bools, ast.NewIdent("bool"))
-		if complexity[node] == 1 && equals(node.Bools) && !noDefaults {
+		if isSimpleNode(node) && equals(node.Bools) && !noDefaults {
 			tokenType, tokenValue := token.TRUE, "true"
 			if !node.Bools[0] {
 				tokenType, tokenValue = token.FALSE, "false"
