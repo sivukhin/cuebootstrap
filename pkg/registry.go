@@ -92,7 +92,6 @@ func (registry *Registry) fillNode(root ast.Decl, node **Node) error {
 		}
 	case *ast.StructLit:
 		(**node).CanBeObject = true
-		(**node).ObjectFields = make(map[string]*Node)
 
 		for _, element := range lit.Elts {
 			if field, ok := element.(*ast.Field); ok {
@@ -119,6 +118,9 @@ func (registry *Registry) fillNode(root ast.Decl, node **Node) error {
 						err := registry.fillNode(field.Value, &fieldNode)
 						if err != nil {
 							return fmt.Errorf("failed to fill field %v: %w", fieldName, err)
+						}
+						if (**node).ObjectFields == nil {
+							(**node).ObjectFields = make(map[string]*Node)
 						}
 						(**node).ObjectFields[fieldName] = fieldNode
 					}

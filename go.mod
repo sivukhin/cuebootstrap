@@ -4,7 +4,6 @@ go 1.22
 
 require (
 	cuelang.org/go v0.9.0
-	github.com/jinzhu/copier v0.4.0
 	github.com/stretchr/testify v1.7.0
 	gopkg.in/yaml.v2 v2.4.0
 )

@@ -8,8 +8,6 @@ import (
 
 	"cuelang.org/go/cue/ast"
 	"cuelang.org/go/cue/token"
-
-	"github.com/jinzhu/copier"
 )
 
 type NodeProps struct {
@@ -69,7 +67,25 @@ func getValueFromMap(m any, key any) (any, bool, error) {
 	return nil, false, fmt.Errorf("unexpected map type: %T", m)
 }
 
-func LoadInto(node *Node, aValue any) error {
+func (registry *Registry) cloneNode(node *Node, isRoot bool) *Node {
+	if node == nil {
+		return node
+	}
+	if _, ok := registry.SchemaName[node]; !isRoot && ok {
+		return node
+	}
+	clone := &Node{NodeProps: node.NodeProps}
+	clone.ArrayElement = registry.cloneNode(node.ArrayElement, false)
+	if len(node.ObjectFields) > 0 {
+		clone.ObjectFields = make(map[string]*Node, len(node.ObjectFields))
+		for key, value := range node.ObjectFields {
+			clone.ObjectFields[key] = registry.cloneNode(value, false)
+		}
+	}
+	return clone
+}
+
+func (registry *Registry) LoadInto(node *Node, aValue any) error {
 	if aValue == nil {
 		node.CanBeNull = true
 		return nil
@@ -101,12 +117,7 @@ func LoadInto(node *Node, aValue any) error {
 				return fmt.Errorf("only string discrimination values are supported: %T", discriminationValue)
 			}
 			if _, ok := node.DiscriminationValues[discriminationString]; !ok {
-				targetProps := NodeProps{}
-				err = copier.CopyWithOption(&targetProps, node.NodeProps, copier.Option{DeepCopy: true})
-				if err != nil {
-					return fmt.Errorf("failed to copy node props for discriminated struct child: %w", err)
-				}
-				node.DiscriminationValues[discriminationString] = &Node{NodeProps: targetProps}
+				node.DiscriminationValues[discriminationString] = registry.cloneNode(node, true)
 			}
 			node = node.DiscriminationValues[discriminationString]
 		}
@@ -130,7 +141,7 @@ func LoadInto(node *Node, aValue any) error {
 			if err != nil {
 				return err
 			} else if valueOk {
-				if err := LoadInto(field, value); err != nil {
+				if err := registry.LoadInto(field, value); err != nil {
 					return err
 				}
 			} else {
@@ -149,7 +160,7 @@ func LoadInto(node *Node, aValue any) error {
 			node.ArrayElement = new(Node)
 		}
 		for _, element := range theValue {
-			if err := LoadInto(node.ArrayElement, element); err != nil {
+			if err := registry.LoadInto(node.ArrayElement, element); err != nil {
 				return err
 			}
 		}
@@ -270,6 +281,18 @@ func format(
 				fields = append(fields, field)
 			}
 		}
+		if node.DiscriminationField != "" {
+			options := make([]ast.Expr, 0)
+			for value := range node.DiscriminationValues {
+				options = append(options, ast.NewString(value))
+			}
+			optionsExp, err := astOptions(options)
+			if err != nil {
+				return nil, fmt.Errorf("failed to create discriminative field type %v: %w", node.DiscriminationField, err)
+			}
+			field := &ast.Field{Label: ast.NewIdent(node.DiscriminationField), Value: optionsExp}
+			fields = append(fields, field)
+		}
 		if node.ObjectFields != nil {
 			keys := mapKeys(node.ObjectFields)
 			sort.Slice(keys, func(i, j int) bool {
@@ -279,18 +302,6 @@ func format(
 				}
 				return keys[i] < keys[j]
 			})
-			if node.DiscriminationField != "" {
-				options := make([]ast.Expr, 0)
-				for value := range node.DiscriminationValues {
-					options = append(options, ast.NewString(value))
-				}
-				optionsExp, err := astOptions(options)
-				if err != nil {
-					return nil, fmt.Errorf("failed to create discriminative field type %v: %w", node.DiscriminationField, err)
-				}
-				field := &ast.Field{Label: ast.NewIdent(node.DiscriminationField), Value: optionsExp}
-				fields = append(fields, field)
-			}
 			for _, key := range keys {
 				value := node.ObjectFields[key]
 				format, err := format(registry, value, complexity, noDefaults, false)

@@ -63,7 +63,7 @@ func main() {
 		if err != nil {
 			panic(err)
 		}
-		err = pkg.LoadInto(root, data)
+		err = registry.LoadInto(root, data)
 		if err != nil {
 			log.Fatalf("unexpected error for file %v: %v", file, err)
 		}
