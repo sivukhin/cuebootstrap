@@ -42,7 +42,7 @@ func main() {
 		registry = pkg.NewRegistry()
 		registry.Root = "#root"
 
-		registry.AddSchema("#root", &pkg.Node{})
+		registry.AddSchema("#root", &pkg.Node{}, true)
 	}
 
 	root := registry.SchemaNode[registry.Root]

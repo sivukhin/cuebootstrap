@@ -10,7 +10,7 @@ import (
 
 func TestName(t *testing.T) {
 	instances := load.Instances([]string{"../config.cue"}, &load.Config{})
-	decl, err := extractSingleDecl(instances)
+	decl, err := extractDecls(instances)
 	require.Nil(t, err)
 	registry, err := LoadRegistry(decl)
 	require.Nil(t, err)

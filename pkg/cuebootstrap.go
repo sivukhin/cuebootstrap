@@ -13,6 +13,7 @@ import (
 )
 
 type NodeProps struct {
+	HasExamples    bool
 	CanBeNull      bool
 	CanBeUndefined bool
 	CanBeObject    bool
@@ -87,12 +88,13 @@ func LoadInto(node *Node, aValue any) error {
 		node.Bools = append(node.Bools, theValue)
 		node.CanBeBool = true
 	case map[any]any, map[string]any:
-		if node.DiscriminationField != "" {
-			discriminationValue, discriminationOk, err := getValueFromMap(theValue, node.DiscriminationField)
+		discriminationField := node.DiscriminationField
+		if discriminationField != "" {
+			discriminationValue, discriminationOk, err := getValueFromMap(theValue, discriminationField)
 			if err != nil {
 				return err
 			} else if !discriminationOk {
-				return fmt.Errorf("discrimination value must be filled: %v", node.DiscriminationField)
+				return fmt.Errorf("discrimination value must be filled: %v", discriminationField)
 			}
 			discriminationString, ok := discriminationValue.(string)
 			if !ok {
@@ -100,7 +102,7 @@ func LoadInto(node *Node, aValue any) error {
 			}
 			if _, ok := node.DiscriminationValues[discriminationString]; !ok {
 				targetProps := NodeProps{}
-				err = copier.Copy(&targetProps, node.NodeProps)
+				err = copier.CopyWithOption(&targetProps, node.NodeProps, copier.Option{DeepCopy: true})
 				if err != nil {
 					return fmt.Errorf("failed to copy node props for discriminated struct child: %w", err)
 				}
@@ -113,16 +115,14 @@ func LoadInto(node *Node, aValue any) error {
 		if reflect.ValueOf(theValue).Len() == 0 {
 			break
 		}
-		fresh := false
 		if node.ObjectFields == nil {
-			fresh = true
 			node.ObjectFields = make(map[string]*Node, 0)
 		}
 		for _, key := range mapKeys(theValue, node.ObjectFields) {
 			field, _ := node.ObjectFields[key]
 			if field == nil {
 				field = new(Node)
-				if !fresh {
+				if node.HasExamples {
 					field.CanBeUndefined = true
 				}
 			}
@@ -136,7 +136,9 @@ func LoadInto(node *Node, aValue any) error {
 			} else {
 				field.CanBeUndefined = true
 			}
-			node.ObjectFields[key] = field
+			if key != discriminationField {
+				node.ObjectFields[key] = field
+			}
 		}
 	case []any:
 		node.CanBeArray = true
@@ -154,6 +156,7 @@ func LoadInto(node *Node, aValue any) error {
 	default:
 		return fmt.Errorf("unexpected value type: %T", aValue)
 	}
+	node.HasExamples = true
 	return nil
 }
 
@@ -216,6 +219,9 @@ func nodeComplexity(node *Node, c map[*Node]int) int {
 	if node.CanBeBool {
 		c[node] += boolComplexity
 	}
+	for _, value := range node.DiscriminationValues {
+		c[node] += nodeComplexity(value, c)
+	}
 	return c[node]
 }
 
@@ -273,35 +279,34 @@ func format(
 				}
 				return keys[i] < keys[j]
 			})
-			for _, key := range keys {
-				if key == node.DiscriminationField {
-					options := make([]ast.Expr, 0)
-					for value := range node.DiscriminationValues {
-						options = append(options, ast.NewString(value))
-					}
-					optionsExp, err := astOptions(options)
-					if err != nil {
-						return nil, fmt.Errorf("failed to create discriminative field type %v: %w", key, err)
-					}
-					field := &ast.Field{Label: ast.NewIdent(key), Value: optionsExp}
-					fields = append(fields, field)
-				} else if node.DiscriminationField == "" {
-					value := node.ObjectFields[key]
-					format, err := format(registry, value, complexity, noDefaults, false)
-					if err != nil {
-						return nil, fmt.Errorf("unable to format field %v: %w", key, err)
-					}
-					var field *ast.Field
-					if strings.HasPrefix(key, "__") {
-						field = &ast.Field{Label: ast.NewString(key), Value: format}
-					} else {
-						field = &ast.Field{Label: ast.NewIdent(key), Value: format}
-					}
-					if value.CanBeUndefined {
-						field.Constraint = token.OPTION
-					}
-					fields = append(fields, field)
+			if node.DiscriminationField != "" {
+				options := make([]ast.Expr, 0)
+				for value := range node.DiscriminationValues {
+					options = append(options, ast.NewString(value))
 				}
+				optionsExp, err := astOptions(options)
+				if err != nil {
+					return nil, fmt.Errorf("failed to create discriminative field type %v: %w", node.DiscriminationField, err)
+				}
+				field := &ast.Field{Label: ast.NewIdent(node.DiscriminationField), Value: optionsExp}
+				fields = append(fields, field)
+			}
+			for _, key := range keys {
+				value := node.ObjectFields[key]
+				format, err := format(registry, value, complexity, noDefaults, false)
+				if err != nil {
+					return nil, fmt.Errorf("unable to format field %v: %w", key, err)
+				}
+				var field *ast.Field
+				if strings.HasPrefix(key, "__") {
+					field = &ast.Field{Label: ast.NewString(key), Value: format}
+				} else {
+					field = &ast.Field{Label: ast.NewIdent(key), Value: format}
+				}
+				if value.CanBeUndefined {
+					field.Constraint = token.OPTION
+				}
+				fields = append(fields, field)
 			}
 		}
 		if len(node.DiscriminationValues) > 0 {

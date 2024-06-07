@@ -9,7 +9,17 @@ import (
 	"cuelang.org/go/cue/load"
 )
 
-func extractSingleDecl(instances []*build.Instance) (ast.Decl, error) {
+func isRootSchema(field *ast.Field) bool {
+	for _, attr := range field.Attrs {
+		key, _ := attr.Split()
+		if key == "root" {
+			return true
+		}
+	}
+	return false
+}
+
+func extractDecls(instances []*build.Instance) ([]ast.Decl, error) {
 	if len(instances) != 1 {
 		return nil, fmt.Errorf("found %v instances, expected single", len(instances))
 	}
@@ -17,11 +27,7 @@ func extractSingleDecl(instances []*build.Instance) (ast.Decl, error) {
 	if len(instance.Files) != 1 {
 		return nil, fmt.Errorf("found %v files, expected single", len(instance.Files))
 	}
-	file := instance.Files[0]
-	if len(file.Decls) != 1 {
-		return nil, fmt.Errorf("found %v decls, expected single", len(file.Decls))
-	}
-	return file.Decls[0], nil
+	return instance.Files[0].Decls, nil
 }
 
 func extractName(label ast.Label) (string, bool) {
@@ -43,7 +49,10 @@ func NewRegistry() *Registry {
 	return &Registry{SchemaNode: make(map[string]*Node), SchemaName: make(map[*Node]string)}
 }
 
-func (registry *Registry) AddSchema(name string, node *Node) {
+func (registry *Registry) AddSchema(name string, node *Node, isRoot bool) {
+	if isRoot {
+		registry.Root = name
+	}
 	registry.SchemaNode[name] = node
 	registry.SchemaName[node] = name
 	registry.SchemasOrder = append(registry.SchemasOrder, name)
@@ -96,7 +105,7 @@ func (registry *Registry) fillNode(root ast.Decl, node **Node) error {
 						return fmt.Errorf("direct references between schemas are forbidden (e.g. #a: #b)")
 					}
 					schemaNode := &Node{}
-					registry.AddSchema(fieldName, schemaNode)
+					registry.AddSchema(fieldName, schemaNode, isRootSchema(field))
 					err := registry.fillNode(field.Value, &schemaNode)
 					if err != nil {
 						return fmt.Errorf("failed to fill schema %v: %w", fieldName, err)
@@ -106,12 +115,13 @@ func (registry *Registry) fillNode(root ast.Decl, node **Node) error {
 					if isDiscriminativeField(field) {
 						(**node).DiscriminationField = fieldName
 						(**node).DiscriminationValues = make(map[string]*Node)
+					} else {
+						err := registry.fillNode(field.Value, &fieldNode)
+						if err != nil {
+							return fmt.Errorf("failed to fill field %v: %w", fieldName, err)
+						}
+						(**node).ObjectFields[fieldName] = fieldNode
 					}
-					err := registry.fillNode(field.Value, &fieldNode)
-					if err != nil {
-						return fmt.Errorf("failed to fill field %v: %w", fieldName, err)
-					}
-					(**node).ObjectFields[fieldName] = fieldNode
 				}
 			}
 		}
@@ -138,7 +148,7 @@ func (registry *Registry) fillNode(root ast.Decl, node **Node) error {
 
 func LoadRegistryFromFile(path string) (*Registry, error) {
 	instances := load.Instances([]string{path}, &load.Config{})
-	decl, err := extractSingleDecl(instances)
+	decl, err := extractDecls(instances)
 	if err != nil {
 		return nil, fmt.Errorf("config file ('%v') must have single top level declaration", path)
 	}
@@ -149,26 +159,26 @@ func LoadRegistryFromFile(path string) (*Registry, error) {
 	return registry, nil
 }
 
-func LoadRegistry(decl ast.Decl) (*Registry, error) {
-	field, ok := decl.(*ast.Field)
-	if !ok {
-		return nil, fmt.Errorf("invalid config structure: there must be single top level schema field")
-	}
-	schemaName, ok := extractName(field.Label)
-	if !ok {
-		return nil, fmt.Errorf("invalid config structure: top level field must be present")
-	}
-	if !ok || !strings.HasPrefix(schemaName, "#") {
-		return nil, fmt.Errorf("invalid config structure: top level field must start with '#' symbol")
-	}
+func LoadRegistry(decls []ast.Decl) (*Registry, error) {
 	registry := NewRegistry()
-	registry.Root = schemaName
-
-	rootNode := &Node{}
-	registry.AddSchema(schemaName, rootNode)
-	err := registry.fillNode(field.Value, &rootNode)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create schema: %w", err)
+	for _, decl := range decls {
+		field, ok := decl.(*ast.Field)
+		if !ok {
+			return nil, fmt.Errorf("invalid config structure: there must be single top level schema field")
+		}
+		schemaName, ok := extractName(field.Label)
+		if !ok {
+			return nil, fmt.Errorf("invalid config structure: top level field must be present")
+		}
+		if !ok || !strings.HasPrefix(schemaName, "#") {
+			return nil, fmt.Errorf("invalid config structure: top level field must start with '#' symbol")
+		}
+		rootNode := &Node{}
+		registry.AddSchema(schemaName, rootNode, isRootSchema(field))
+		err := registry.fillNode(field.Value, &rootNode)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create schema: %w", err)
+		}
 	}
 	return registry, nil
 }
