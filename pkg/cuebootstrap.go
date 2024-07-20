@@ -28,6 +28,7 @@ type NodeProps struct {
 
 type Node struct {
 	NodeProps
+	Discard              bool
 	DiscriminationField  string
 	DiscriminationValues map[string]*Node
 }
@@ -156,6 +157,12 @@ func (registry *Registry) LoadInto(node *Node, aValue any) error {
 					return err
 				}
 			} else {
+				field.CanBeUndefined = true
+			}
+			if registry.UndefinedIsNull && field.CanBeUndefined {
+				field.CanBeNull = true
+			}
+			if registry.NullIsUndefined && field.CanBeNull {
 				field.CanBeUndefined = true
 			}
 			if discriminationField == "" || key != discriminationField {
@@ -299,7 +306,7 @@ func format(
 				if err != nil {
 					return nil, fmt.Errorf("unable to format discrimination value %v: %w", key, err)
 				}
-				field := &ast.Field{Label: ast.NewIdent(fmt.Sprintf("#%v", key)), Value: format}
+				field := &ast.Field{Label: ast.NewIdent(fmt.Sprintf("#_%v", key)), Value: format}
 				fields = append(fields, field)
 			}
 
@@ -325,6 +332,9 @@ func format(
 			})
 			for _, key := range keys {
 				value := node.ObjectFields[key]
+				if value.Discard {
+					continue
+				}
 				format, err := format(registry, value, complexity, noDefaults, false)
 				if err != nil {
 					return nil, fmt.Errorf("unable to format field %v: %w", key, err)
@@ -353,7 +363,7 @@ func format(
 							),
 						},
 					},
-					Value: ast.NewStruct(ast.Embed(ast.NewIdent(fmt.Sprintf("#%v", key)))),
+					Value: ast.NewStruct(ast.Embed(ast.NewIdent(fmt.Sprintf("#_%v", key)))),
 				})
 			}
 		}

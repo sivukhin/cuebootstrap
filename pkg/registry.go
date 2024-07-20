@@ -7,16 +7,22 @@ import (
 	"cuelang.org/go/cue/ast"
 	"cuelang.org/go/cue/build"
 	"cuelang.org/go/cue/load"
+	"cuelang.org/go/cue/token"
 )
 
-func isRootSchema(field *ast.Field) bool {
+func isRootSchema(field *ast.Field) (bool, map[string]struct{}) {
 	for _, attr := range field.Attrs {
-		key, _ := attr.Split()
+		key, value := attr.Split()
 		if key == "root" {
-			return true
+			flags := strings.Split(value, ",")
+			flagsMap := make(map[string]struct{})
+			for _, flag := range flags {
+				flagsMap[strings.TrimSpace(flag)] = struct{}{}
+			}
+			return true, flagsMap
 		}
 	}
-	return false
+	return false, nil
 }
 
 func extractDecls(instances []*build.Instance) ([]ast.Decl, error) {
@@ -39,10 +45,12 @@ func extractName(label ast.Label) (string, bool) {
 }
 
 type Registry struct {
-	Root         string
-	SchemaNode   map[string]*Node
-	SchemaName   map[*Node]string
-	SchemasOrder []string
+	Root            string
+	SchemaNode      map[string]*Node
+	SchemaName      map[*Node]string
+	SchemasOrder    []string
+	UndefinedIsNull bool
+	NullIsUndefined bool
 }
 
 func NewRegistry() *Registry {
@@ -62,6 +70,16 @@ func isDiscriminativeField(field *ast.Field) bool {
 	for _, attr := range field.Attrs {
 		key, _ := attr.Split()
 		if key == "discriminative" {
+			return true
+		}
+	}
+	return false
+}
+
+func isDiscardField(field *ast.Field) bool {
+	for _, attr := range field.Attrs {
+		key, _ := attr.Split()
+		if key == "discard" {
 			return true
 		}
 	}
@@ -104,7 +122,7 @@ func (registry *Registry) fillNode(root ast.Decl, node **Node) error {
 						return fmt.Errorf("direct references between schemas are forbidden (e.g. #a: #b)")
 					}
 					schemaNode := &Node{}
-					registry.AddSchema(fieldName, schemaNode, isRootSchema(field))
+					registry.AddSchema(fieldName, schemaNode, false)
 					err := registry.fillNode(field.Value, &schemaNode)
 					if err != nil {
 						return fmt.Errorf("failed to fill schema %v: %w", fieldName, err)
@@ -121,6 +139,10 @@ func (registry *Registry) fillNode(root ast.Decl, node **Node) error {
 						}
 						if (**node).ObjectFields == nil {
 							(**node).ObjectFields = make(map[string]*Node)
+						}
+						fieldNode.Discard = isDiscardField(field)
+						if field.Constraint == token.OPTION {
+							fieldNode.CanBeUndefined = true
 						}
 						(**node).ObjectFields[fieldName] = fieldNode
 					}
@@ -152,7 +174,7 @@ func LoadRegistryFromFile(path string) (*Registry, error) {
 	instances := load.Instances([]string{path}, &load.Config{})
 	decl, err := extractDecls(instances)
 	if err != nil {
-		return nil, fmt.Errorf("config file ('%v') must have single top level declaration", path)
+		return nil, fmt.Errorf("config file ('%v') must have single top level declaration: %w", path, err)
 	}
 	registry, err := LoadRegistry(decl)
 	if err != nil {
@@ -176,7 +198,14 @@ func LoadRegistry(decls []ast.Decl) (*Registry, error) {
 			return nil, fmt.Errorf("invalid config structure: top level field must start with '#' symbol")
 		}
 		rootNode := &Node{}
-		registry.AddSchema(schemaName, rootNode, isRootSchema(field))
+		isRoot, rootFlags := isRootSchema(field)
+		if _, ok := rootFlags["undefined-is-null"]; ok {
+			registry.UndefinedIsNull = true
+		}
+		if _, ok := rootFlags["null-is-undefined"]; ok {
+			registry.NullIsUndefined = true
+		}
+		registry.AddSchema(schemaName, rootNode, isRoot)
 		err := registry.fillNode(field.Value, &rootNode)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create schema: %w", err)
