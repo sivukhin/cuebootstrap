@@ -27,11 +27,11 @@ func isRootSchema(field *ast.Field) (bool, map[string]struct{}) {
 
 func extractDecls(instances []*build.Instance) ([]ast.Decl, error) {
 	if len(instances) != 1 {
-		return nil, fmt.Errorf("found %v instances, expected single, instances=%v", len(instances), instances)
+		return nil, fmt.Errorf("found %v instances, expected single, instances=%+v", len(instances), instances)
 	}
 	instance := instances[0]
 	if len(instance.Files) != 1 {
-		return nil, fmt.Errorf("found %v files, expected single, instance=%v", len(instance.Files), instance)
+		return nil, fmt.Errorf("found %v files, expected single, instance=%+v", len(instance.Files), instance)
 	}
 	return instance.Files[0].Decls, nil
 }
