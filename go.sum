@@ -31,6 +31,8 @@ github.com/opencontainers/image-spec v1.1.0 h1:8SG7/vwALn54lVB/0yZ/MMwhFrPYtpEHQ
 github.com/opencontainers/image-spec v1.1.0/go.mod h1:W4s4sFTMaBeK1BQLXbG4AdM2szdn85PY75RI83NrTrM=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
+github.com/protocolbuffers/txtpbfmt v0.0.0-20240116145035-ef3ab179eed6 h1:MAzmm+JtFxQwTPb1cVMLkemw2OxLy5AB/d/rxtAwGQQ=
+github.com/protocolbuffers/txtpbfmt v0.0.0-20240116145035-ef3ab179eed6/go.mod h1:jgxiZysxFPM+iWKwQwPR+y+Jvo54ARd4EisXxKYpB5c=
 github.com/protocolbuffers/txtpbfmt v0.0.0-20240611101534-dedd929c1c22 h1:6thUEu7SvO8GVw1IgMWvpS17PYM1VrSK/s9WKot8Zb8=
 github.com/protocolbuffers/txtpbfmt v0.0.0-20240611101534-dedd929c1c22/go.mod h1:jgxiZysxFPM+iWKwQwPR+y+Jvo54ARd4EisXxKYpB5c=
 github.com/rogpeppe/go-internal v1.12.0 h1:exVL4IDcn6na9z1rAb56Vxr+CgyK3nn3O+epU5NdKM8=
